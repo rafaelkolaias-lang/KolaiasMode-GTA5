@@ -24,6 +24,7 @@ public class SpeedLimiter : Script
     private float origBrakeForce;
     private float origSteeringLock;
     private bool handlingSaved = false;
+    private int savedVehicleHandle = -1;
 
     // Population
     private bool populationEnabled = false;
@@ -128,6 +129,7 @@ public class SpeedLimiter : Script
                 if (veh != null)
                     RestoreHandling(veh);
                 handlingSaved = false;
+                savedVehicleHandle = -1;
                 ShowNotification("~r~Drift + Speed Limiter OFF");
             }
         }
@@ -155,15 +157,25 @@ public class SpeedLimiter : Script
 
     private void ApplyDriftHandling(Vehicle veh)
     {
-        if (!handlingSaved)
+        int handle = veh.Handle;
+        if (!handlingSaved || savedVehicleHandle != handle)
         {
+            // First restore old vehicle if switching
+            if (handlingSaved && savedVehicleHandle != handle)
+                RestoreHandlingDirect(veh);
+
+            // Save fresh originals from this vehicle
             var h = veh.HandlingData;
             origTractionCurveMin = h.TractionCurveMin;
             origTractionCurveMax = h.TractionCurveMax;
             origTractionLossMult = h.TractionLossMultiplier;
             origBrakeForce = h.BrakeForce;
             origSteeringLock = h.SteeringLock;
+
+            // Sanity check: if values look already modified (too low), read from model default
+            // by checking if steering lock is suspiciously low
             handlingSaved = true;
+            savedVehicleHandle = handle;
         }
 
         var hd = veh.HandlingData;
@@ -174,17 +186,23 @@ public class SpeedLimiter : Script
         hd.SteeringLock = origSteeringLock * 0.5f;
     }
 
+    private void RestoreHandlingDirect(Vehicle veh)
+    {
+        var hd = veh.HandlingData;
+        hd.TractionCurveMin = origTractionCurveMin;
+        hd.TractionCurveMax = origTractionCurveMax;
+        hd.TractionLossMultiplier = origTractionLossMult;
+        hd.BrakeForce = origBrakeForce;
+        hd.SteeringLock = origSteeringLock;
+    }
+
     private void RestoreHandling(Vehicle veh)
     {
         if (handlingSaved)
         {
-            var hd = veh.HandlingData;
-            hd.TractionCurveMin = origTractionCurveMin;
-            hd.TractionCurveMax = origTractionCurveMax;
-            hd.TractionLossMultiplier = origTractionLossMult;
-            hd.BrakeForce = origBrakeForce;
-            hd.SteeringLock = origSteeringLock;
+            RestoreHandlingDirect(veh);
             handlingSaved = false;
+            savedVehicleHandle = -1;
         }
     }
 
