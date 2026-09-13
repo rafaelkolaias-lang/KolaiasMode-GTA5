@@ -8,7 +8,7 @@ public class SpeedLimiter : Script
     // GUI
     private bool guiOpen = false;
     private int selectedOption = 0;
-    private const int TOTAL_OPTIONS = 2;
+    private const int TOTAL_OPTIONS = 3;
 
     // Drift mode
     private bool driftEnabled = false;
@@ -28,6 +28,17 @@ public class SpeedLimiter : Script
     // Population
     private bool populationEnabled = false;
     private string lastDensityPeriod = "";
+
+    // Dynamic weather
+    private bool weatherEnabled = false;
+    private DateTime lastWeatherChange = DateTime.MinValue;
+    private int weatherIndex = 0;
+    private string[] weathers = new string[] {
+        "EXTRASUNNY", "CLEAR", "CLOUDS", "OVERCAST",
+        "RAIN", "THUNDER", "CLEARING", "CLEAR",
+        "FOGGY", "CLOUDS", "RAIN", "SMOG",
+        "EXTRASUNNY", "CLEAR", "OVERCAST", "THUNDER"
+    };
 
     private bool startupShown = false;
 
@@ -130,6 +141,16 @@ public class SpeedLimiter : Script
             else
                 ShowNotification("~r~Population Density OFF");
         }
+        else if (option == 2)
+        {
+            // Toggle Dynamic Weather
+            weatherEnabled = !weatherEnabled;
+            lastWeatherChange = DateTime.MinValue;
+            if (weatherEnabled)
+                ShowNotification("~g~Dynamic Weather ON\n~w~Clima muda a cada 5-10 minutos");
+            else
+                ShowNotification("~r~Dynamic Weather OFF");
+        }
     }
 
     private void ApplyDriftHandling(Vehicle veh)
@@ -205,6 +226,24 @@ public class SpeedLimiter : Script
         Function.Call((Hash)0xEAE6DCC7EEE3DB1D, multiplier);
     }
 
+    private void UpdateWeather()
+    {
+        // Transition 2-5 min + stay 10 min = total 12-15 min per weather
+        int transitionSec = 120 + (weatherIndex * 43) % 180; // 120-300 sec (2-5 min)
+        int totalInterval = transitionSec + 600; // + 10 min stay
+        if ((DateTime.Now - lastWeatherChange).TotalSeconds > totalInterval)
+        {
+            lastWeatherChange = DateTime.Now;
+            string weather = weathers[weatherIndex % weathers.Length];
+            weatherIndex++;
+
+            // SET_WEATHER_TYPE_OVERTIME_PERSIST - gradual transition
+            Function.Call((Hash)0xFB5045B7C42B75BF, weather, (float)transitionSec);
+
+            ShowSubtitle("~y~Weather: ~w~" + weather, 3000);
+        }
+    }
+
     private void OnTick(object sender, EventArgs e)
     {
         if (Game.Player == null || Game.Player.Character == null)
@@ -219,6 +258,10 @@ public class SpeedLimiter : Script
         // Population density (always runs if enabled)
         if (populationEnabled && Game.Player.CanControlCharacter)
             UpdateTrafficDensity();
+
+        // Dynamic weather
+        if (weatherEnabled && Game.Player.CanControlCharacter)
+            UpdateWeather();
 
         // Draw GUI
         if (guiOpen)
@@ -244,8 +287,16 @@ public class SpeedLimiter : Script
             }
             else
             {
+                // Re-apply every frame to prevent game from resetting values
                 if (handlingSaved)
-                    veh.HandlingData.BrakeForce = origBrakeForce * 0.25f;
+                {
+                    var hd = veh.HandlingData;
+                    hd.TractionCurveMin = origTractionCurveMin * 0.65f;
+                    hd.TractionCurveMax = origTractionCurveMax * 0.65f;
+                    hd.TractionLossMultiplier = origTractionLossMult * 0.25f;
+                    hd.BrakeForce = origBrakeForce * 0.25f;
+                    hd.SteeringLock = origSteeringLock * 0.5f;
+                }
 
                 if (currentSpeedKmh > limitKmh)
                     Function.Call((Hash)0xFE99B66D079CF6BC, 0, 71, true);
@@ -279,7 +330,7 @@ public class SpeedLimiter : Script
         float boxX = 0.5f;
         float boxY = 0.38f;
         float boxW = 0.28f;
-        float boxH = 0.28f;
+        float boxH = 0.36f;
 
         // Background
         DrawRect(boxX, boxY, boxW, boxH, 0, 0, 0, 200);
@@ -318,6 +369,20 @@ public class SpeedLimiter : Script
         float detY2 = opt1Y + 0.03f;
         DrawText("   ~c~Rush 7-10h/17-20h: 200% | Night 0-6h: 50% | Normal: 100%",
                  boxX - boxW / 2f + 0.015f, detY2, 0.25f, 180, 180, 180, 200, false);
+
+        // Option 2: Dynamic Weather
+        float opt2Y = boxY + 0.1f;
+        bool sel2 = selectedOption == 2;
+        if (sel2)
+            DrawRect(boxX, opt2Y + 0.015f, boxW - 0.01f, 0.055f, 255, 200, 0, 80);
+
+        string weatherStatus = weatherEnabled ? "~g~ON" : "~r~OFF";
+        DrawText((sel2 ? ">> " : "   ") + "Dynamic Weather  " + weatherStatus,
+                 boxX - boxW / 2f + 0.015f, opt2Y, 0.35f, 255, 255, 255, 255, false);
+
+        float detY3 = opt2Y + 0.03f;
+        DrawText("   ~c~Clima muda a cada 5-10 min (sol, chuva, neblina, tempestade...)",
+                 boxX - boxW / 2f + 0.015f, detY3, 0.25f, 180, 180, 180, 200, false);
 
         // Footer
         float footY = boxY + boxH / 2f - 0.035f;
