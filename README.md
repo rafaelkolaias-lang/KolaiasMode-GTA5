@@ -1,39 +1,46 @@
 # KolaiasMode - GTA V Mod
 
-Mod para GTA V que combina **Speed Limiter** (limitador de velocidade) + **Drift Handling** (modo drift) em um unico toggle.
+Mod para GTA V com **menu GUI** que combina **Speed Limiter** + **Drift Handling** + **Population Density** em modulos independentes.
 
 ## Funcionalidades
 
-### Speed Limiter
-- Limita a velocidade maxima do veiculo
-- Ao ativar, pega a velocidade atual como limite inicial
-- Ajuste em tempo real com **Page Up / Page Down** (incremento de 5 km/h)
-- Segurar **Shift** desativa o limite temporariamente (solta = volta a limitar)
-- HUD no topo da tela mostra o limite e velocidade atual
+### Menu GUI (F11)
+- Menu visual no jogo com navegacao por teclado
+- Cada modulo pode ser ativado/desativado separadamente
+- Mostra status ON/OFF e detalhes de cada opcao
 
-### Drift Handling
-- **Tracao** reduzida para 65% (pneus escorregam mais)
-- **Aderencia** reduzida para 25% (pista parece molhada)
-- **Freio** reduzido para 25% (freia muito menos)
-- **Angulo de curva** reduzido para 50% (curvas mais abertas)
-- Segurar **Shift** restaura o freio original temporariamente
-- Aplica automaticamente em qualquer veiculo que voce entrar enquanto o mod estiver ativo
+### 1. Drift + Speed Limiter
+- **Speed Limiter**: limita a velocidade maxima do veiculo
+  - Ao ativar, pega a velocidade atual como limite inicial
+  - Ajuste com **Page Up / Page Down** (incremento de 5 km/h)
+  - Segurar **Shift** desativa o limite temporariamente
+- **Drift Handling**: modifica o comportamento do veiculo
+  - Tracao reduzida para 65%
+  - Aderencia reduzida para 25%
+  - Freio reduzido para 25%
+  - Angulo de curva reduzido para 50%
+  - Segurar **Shift** restaura o freio original temporariamente
+- Aplica automaticamente em qualquer veiculo que voce entrar
+- Nao desativa ao sair do carro
+
+### 2. Population Density
+- Ajusta automaticamente a quantidade de NPCs e carros baseado na hora do jogo
+- **Horario de pico** (7-10h e 17-20h): **200%** de densidade
+- **Madrugada** (0-6h): **50%** de densidade
+- **Resto do dia**: **100%** (normal)
+- Aviso na tela quando muda o periodo
 
 ## Controles
 
 | Tecla | Acao |
 |---|---|
-| **Ctrl + F11** | Ativa / Desativa o mod |
+| **F11** | Abre / Fecha o menu GUI |
+| **Seta Cima / Baixo** | Navega entre as opcoes no menu |
+| **Enter** | Ativa / Desativa a opcao selecionada |
+| **Esc** | Fecha o menu |
 | **Page Up** | Aumenta limite de velocidade (+5 km/h) |
 | **Page Down** | Diminui limite de velocidade (-5 km/h) |
-| **Shift** (segurar) | Desativa limite de velocidade + restaura freio temporariamente |
-| **Insert** | Recarrega o script sem reiniciar o jogo |
-
-## Comportamento
-
-- O mod **nao desativa ao sair do carro** - so desativa com Ctrl+F11
-- Ao entrar em um novo carro com o mod ativo, o drift handling e aplicado automaticamente
-- Ao iniciar o jogo, aparece uma mensagem: *"KolaiasMode loaded! Ctrl+F11 to toggle"*
+| **Shift** (segurar) | Desativa limite de velocidade + restaura freio |
 
 ## Requisitos
 
@@ -139,6 +146,23 @@ if (!startupShown && Game.Player.CanControlCharacter)
 }
 ```
 
+### 7. `SET_SCENARIO_PED_DENSITY_MULTIPLIER_THIS_FRAME` - native nao existe
+**Erro**: `SCRIPT HOOK V CRITICAL ERROR - FATAL: Can't find native 0x7A556D8427F8B1FC`
+
+**Causa**: A native `SET_SCENARIO_PED_DENSITY_MULTIPLIER_THIS_FRAME` nao existe em todas as builds do GTA V.
+
+**Solucao**: Remover essa native e usar apenas as 4 que funcionam:
+```csharp
+// SET_PED_DENSITY_MULTIPLIER_THIS_FRAME
+Function.Call((Hash)0x95E3D6257B166CF2, multiplier);
+// SET_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME
+Function.Call((Hash)0x245A6883D966D537, multiplier);
+// SET_RANDOM_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME
+Function.Call((Hash)0xB3B3359379FE77D3, multiplier);
+// SET_PARKED_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME
+Function.Call((Hash)0xEAE6DCC7EEE3DB1D, multiplier);
+```
+
 ## Valores do Drift Handling
 
 | Parametro | Multiplicador | Efeito |
@@ -148,6 +172,14 @@ if (!startupShown && Game.Player.CanControlCharacter)
 | TractionLossMultiplier | 0.25x | 75% menos aderencia |
 | BrakeForce | 0.25x | 75% menos freio |
 | SteeringLock | 0.5x | 50% menos angulo de curva |
+
+## Population Density
+
+| Horario do jogo | Densidade | Periodo |
+|---|---|---|
+| 7h-10h e 17h-20h | 200% | Horario de pico |
+| 0h-6h | 50% | Madrugada |
+| 6h-7h, 10h-17h, 20h-0h | 100% | Normal |
 
 ## Licenca
 
