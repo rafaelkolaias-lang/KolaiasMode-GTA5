@@ -121,7 +121,7 @@ public class SpeedLimiter : Script
                         limitKmh = (float)Math.Round(currentSpeed / STEP) * STEP;
                     ApplyDriftHandling(veh);
                 }
-                ShowNotification("~g~Drift + Speed Limiter ON\n~y~" + limitKmh + " km/h\n~w~PgUp/PgDn: adjust | Shift: bypass");
+                ShowNotification("~g~Drift + Limitador de Velocidade LIGADO\n~y~" + limitKmh + " km/h\n~w~PgUp/PgDn: ajustar | Shift: ignorar limite");
             }
             else
             {
@@ -130,7 +130,7 @@ public class SpeedLimiter : Script
                     RestoreHandling(veh);
                 handlingSaved = false;
                 savedVehicleHandle = -1;
-                ShowNotification("~r~Drift + Speed Limiter OFF");
+                ShowNotification("~r~Drift + Limitador de Velocidade DESLIGADO");
             }
         }
         else if (option == 1)
@@ -139,9 +139,9 @@ public class SpeedLimiter : Script
             populationEnabled = !populationEnabled;
             lastDensityPeriod = "";
             if (populationEnabled)
-                ShowNotification("~g~Population Density ON\n~w~Rush 200% | Night 50% | Normal 100%");
+                ShowNotification("~g~Densidade Populacional LIGADO\n~w~Hora Pico 200% | Madrugada 50% | Normal 100%");
             else
-                ShowNotification("~r~Population Density OFF");
+                ShowNotification("~r~Densidade Populacional DESLIGADO");
         }
         else if (option == 2)
         {
@@ -149,10 +149,21 @@ public class SpeedLimiter : Script
             weatherEnabled = !weatherEnabled;
             lastWeatherChange = DateTime.MinValue;
             if (weatherEnabled)
-                ShowNotification("~g~Dynamic Weather ON\n~w~Clima muda a cada 5-10 minutos");
+                ShowNotification("~g~Clima Dinamico LIGADO\n~w~Clima muda a cada 5-10 minutos");
             else
-                ShowNotification("~r~Dynamic Weather OFF");
+                ShowNotification("~r~Clima Dinamico DESLIGADO");
         }
+    }
+
+    private float GetWeightFactor(Vehicle veh)
+    {
+        // Veiculos mais pesados recebem menos reducao de tracao
+        // Leve (<1200kg): fator 0.0  |  Medio (~1600kg): ~0.5  |  Pesado (>2000kg): 1.0
+        float mass = veh.HandlingData.Mass;
+        float factor = (mass - 1200f) / 800f;
+        if (factor < 0f) factor = 0f;
+        if (factor > 1f) factor = 1f;
+        return factor;
     }
 
     private void ApplyDriftHandling(Vehicle veh)
@@ -172,16 +183,20 @@ public class SpeedLimiter : Script
             origBrakeForce = h.BrakeForce;
             origSteeringLock = h.SteeringLock;
 
-            // Sanity check: if values look already modified (too low), read from model default
-            // by checking if steering lock is suspiciously low
             handlingSaved = true;
             savedVehicleHandle = handle;
         }
 
+        // Escala por peso: pesados mantem mais tracao pra nao derrapar em morro
+        // Freio e curva sao fixos pra todos os veiculos
+        float w = GetWeightFactor(veh);
+        float tractionMult = 0.65f + w * 0.25f;
+        float lossMult = 0.25f + w * 0.35f;
+
         var hd = veh.HandlingData;
-        hd.TractionCurveMin = origTractionCurveMin * 0.65f;
-        hd.TractionCurveMax = origTractionCurveMax * 0.65f;
-        hd.TractionLossMultiplier = origTractionLossMult * 0.25f;
+        hd.TractionCurveMin = origTractionCurveMin * tractionMult;
+        hd.TractionCurveMax = origTractionCurveMax * tractionMult;
+        hd.TractionLossMultiplier = origTractionLossMult * lossMult;
         hd.BrakeForce = origBrakeForce * 0.25f;
         hd.SteeringLock = origSteeringLock * 0.5f;
     }
@@ -232,10 +247,10 @@ public class SpeedLimiter : Script
         if (period != lastDensityPeriod)
         {
             lastDensityPeriod = period;
-            string label = period == "rush" ? "~o~RUSH HOUR 200%" :
+            string label = period == "rush" ? "~o~HORA PICO 200%" :
                            period == "night" ? "~b~MADRUGADA 50%" :
                            "~w~NORMAL 100%";
-            ShowSubtitle("~y~Traffic: " + label, 4000);
+            ShowSubtitle("~y~Transito: " + label, 4000);
         }
 
         Function.Call((Hash)0x95E3D6257B166CF2, multiplier);
@@ -258,7 +273,7 @@ public class SpeedLimiter : Script
             // SET_WEATHER_TYPE_OVERTIME_PERSIST - gradual transition
             Function.Call((Hash)0xFB5045B7C42B75BF, weather, (float)transitionSec);
 
-            ShowSubtitle("~y~Weather: ~w~" + weather, 3000);
+            ShowSubtitle("~y~Clima: ~w~" + weather, 3000);
         }
     }
 
@@ -270,7 +285,7 @@ public class SpeedLimiter : Script
         if (!startupShown && Game.Player.CanControlCharacter)
         {
             startupShown = true;
-            ShowSubtitle("~y~KolaiasMode~w~ loaded! Press ~b~F11~w~ to open menu", 8000);
+            ShowSubtitle("~y~KolaiasMode~w~ carregado! Aperte ~b~F11~w~ para abrir o menu", 8000);
         }
 
         // Population density (always runs if enabled)
@@ -308,10 +323,14 @@ public class SpeedLimiter : Script
                 // Re-apply every frame to prevent game from resetting values
                 if (handlingSaved)
                 {
+                    float w = GetWeightFactor(veh);
+                    float tractionMult = 0.65f + w * 0.25f;
+                    float lossMult = 0.25f + w * 0.35f;
+
                     var hd = veh.HandlingData;
-                    hd.TractionCurveMin = origTractionCurveMin * 0.65f;
-                    hd.TractionCurveMax = origTractionCurveMax * 0.65f;
-                    hd.TractionLossMultiplier = origTractionLossMult * 0.25f;
+                    hd.TractionCurveMin = origTractionCurveMin * tractionMult;
+                    hd.TractionCurveMax = origTractionCurveMax * tractionMult;
+                    hd.TractionLossMultiplier = origTractionLossMult * lossMult;
                     hd.BrakeForce = origBrakeForce * 0.25f;
                     hd.SteeringLock = origSteeringLock * 0.5f;
                 }
@@ -363,14 +382,14 @@ public class SpeedLimiter : Script
         if (sel0)
             DrawRect(boxX, opt0Y + 0.015f, boxW - 0.01f, 0.055f, 255, 200, 0, 80);
 
-        string driftStatus = driftEnabled ? "~g~ON" : "~r~OFF";
-        string driftInfo = driftEnabled ? "  ~y~Limit: " + limitKmh + " km/h" : "";
-        DrawText((sel0 ? ">> " : "   ") + "Drift + Speed Limiter  " + driftStatus + driftInfo,
+        string driftStatus = driftEnabled ? "~g~LIGADO" : "~r~DESLIGADO";
+        string driftInfo = driftEnabled ? "  ~y~Limite: " + limitKmh + " km/h" : "";
+        DrawText((sel0 ? ">> " : "   ") + "Drift + Limitador  " + driftStatus + driftInfo,
                  boxX - boxW / 2f + 0.015f, opt0Y, 0.35f, 255, 255, 255, 255, false);
 
         // Drift details
         float detY = opt0Y + 0.03f;
-        DrawText("   ~c~Tracao 65% | Aderencia 25% | Freio 25% | Curva 50%",
+        DrawText("   ~c~Drift adaptativo por peso (leves derrapam mais, pesados sobem morro)",
                  boxX - boxW / 2f + 0.015f, detY, 0.25f, 180, 180, 180, 200, false);
 
         // Option 1: Population
@@ -379,13 +398,13 @@ public class SpeedLimiter : Script
         if (sel1)
             DrawRect(boxX, opt1Y + 0.015f, boxW - 0.01f, 0.055f, 255, 200, 0, 80);
 
-        string popStatus = populationEnabled ? "~g~ON" : "~r~OFF";
-        DrawText((sel1 ? ">> " : "   ") + "Population Density  " + popStatus,
+        string popStatus = populationEnabled ? "~g~LIGADO" : "~r~DESLIGADO";
+        DrawText((sel1 ? ">> " : "   ") + "Densidade Populacional  " + popStatus,
                  boxX - boxW / 2f + 0.015f, opt1Y, 0.35f, 255, 255, 255, 255, false);
 
         // Population details
         float detY2 = opt1Y + 0.03f;
-        DrawText("   ~c~Rush 7-10h/17-20h: 200% | Night 0-6h: 50% | Normal: 100%",
+        DrawText("   ~c~Pico 7-10h/17-20h: 200% | Madrugada 0-6h: 50% | Normal: 100%",
                  boxX - boxW / 2f + 0.015f, detY2, 0.25f, 180, 180, 180, 200, false);
 
         // Option 2: Dynamic Weather
@@ -394,8 +413,8 @@ public class SpeedLimiter : Script
         if (sel2)
             DrawRect(boxX, opt2Y + 0.015f, boxW - 0.01f, 0.055f, 255, 200, 0, 80);
 
-        string weatherStatus = weatherEnabled ? "~g~ON" : "~r~OFF";
-        DrawText((sel2 ? ">> " : "   ") + "Dynamic Weather  " + weatherStatus,
+        string weatherStatus = weatherEnabled ? "~g~LIGADO" : "~r~DESLIGADO";
+        DrawText((sel2 ? ">> " : "   ") + "Clima Dinamico  " + weatherStatus,
                  boxX - boxW / 2f + 0.015f, opt2Y, 0.35f, 255, 255, 255, 255, false);
 
         float detY3 = opt2Y + 0.03f;
@@ -404,7 +423,7 @@ public class SpeedLimiter : Script
 
         // Footer
         float footY = boxY + boxH / 2f - 0.035f;
-        DrawText("~y~Up/Down~w~ navigate  ~y~Enter~w~ toggle  ~y~F11/Esc~w~ close",
+        DrawText("~y~Cima/Baixo~w~ navegar  ~y~Enter~w~ alternar  ~y~F11/Esc~w~ fechar",
                  boxX, footY, 0.28f, 200, 200, 200, 200, true);
     }
 
@@ -413,12 +432,12 @@ public class SpeedLimiter : Script
         string trafficLabel = "";
         if (populationEnabled)
         {
-            trafficLabel = lastDensityPeriod == "rush" ? " ~o~RUSH" :
-                           lastDensityPeriod == "night" ? " ~b~NIGHT" :
+            trafficLabel = lastDensityPeriod == "rush" ? " ~o~PICO" :
+                           lastDensityPeriod == "night" ? " ~b~MADRUGADA" :
                            " ~w~NORMAL";
         }
 
-        string text = string.Format("~y~LIMIT: {0:0} km/h ~w~| NOW: {1:0} km/h ~b~| DRIFT{2}",
+        string text = string.Format("~y~LIMITE: {0:0} km/h ~w~| ATUAL: {1:0} km/h ~b~| DRIFT{2}",
                                     limitKmh, currentSpeedKmh, trafficLabel);
 
         Function.Call((Hash)0x66E0276CC5F6B9DA, 4);
